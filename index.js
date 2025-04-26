@@ -48,6 +48,36 @@ bot.onText(/\/demote (.+)/, (msg, match) => {
   }
 });
 
+// Add Funds Command
+bot.onText(/\/addfunds (\d+) (\d+)/, (msg, match) => {
+  const chatId = msg.chat.id.toString();
+  const targetId = match[1];
+  const amount = parseInt(match[2]);
+
+  if (chatId !== superAdminId) {
+    bot.sendMessage(chatId, "🚫 Only Super Admin can add funds.");
+    return;
+  }
+
+  let targetUser = users.find(u => u.telegramId === targetId);
+  if (!targetUser) {
+    // Initialize user if not present
+    targetUser = {
+      telegramId: targetId,
+      walletBalance: 0,
+      rolloverSubscriptionEnd: null,
+      rolloverOddsType: null,
+      purchaseHistory: []
+    };
+    users.push(targetUser);
+  }
+
+  targetUser.walletBalance += amount;
+
+  bot.sendMessage(chatId, `✅ Added ₦${amount} to user ${targetId}'s wallet. New balance: ₦${targetUser.walletBalance}`);
+  bot.sendMessage(targetId, `💰 Your wallet has been credited with ₦${amount}. New balance: ₦${targetUser.walletBalance}`);
+});
+
 // Upload Booking Code Command
 bot.onText(/\/uploadcode/, (msg) => {
   const chatId = msg.chat.id.toString();
@@ -62,7 +92,22 @@ bot.onText(/\/uploadcode/, (msg) => {
 // Handle Messages for Uploading and Others
 bot.on('message', async (msg) => {
   const chatId = msg.chat.id.toString();
-  const text = msg.text.trim();
+  const text = msg.text?.trim();
+
+  if (!text) return;
+
+  // Initialize user if not present
+  let user = users.find(u => u.telegramId === chatId);
+  if (!user) {
+    user = {
+      telegramId: chatId,
+      walletBalance: 0,
+      rolloverSubscriptionEnd: null,
+      rolloverOddsType: null,
+      purchaseHistory: []
+    };
+    users.push(user);
+  }
 
   if (userChoices[chatId]) {
     const upload = userChoices[chatId];
@@ -100,7 +145,7 @@ bot.on('message', async (msg) => {
     else if (upload.stage === 'upload_expiry') {
       upload.expiryTime = text;
 
-      premiumCodes.push({
+      const codeEntry = {
         oddsRange: upload.oddsRange,
         winRate: upload.winRate,
         price: upload.price,
@@ -108,12 +153,63 @@ bot.on('message', async (msg) => {
         logo: upload.logo,
         code: upload.code,
         expiryTime: upload.expiryTime
+      };
+
+      premiumCodes.push(codeEntry);
+
+      // Record the upload in admin's purchase history
+      user.purchaseHistory.push({
+        type: 'Booking Code Upload',
+        oddsRange: upload.oddsRange,
+        price: upload.price,
+        date: new Date().toISOString()
       });
 
       delete userChoices[chatId];
       bot.sendMessage(chatId, "🎯 Booking Code Successfully Uploaded with Expiry Time!");
     }
 
+    return;
+  }
+
+  // Handle /history command
+  if (text === '/history') {
+    if (!user.purchaseHistory || user.purchaseHistory.length === 0) {
+      bot.sendMessage(chatId, "📜 No purchase history found.");
+      return;
+    }
+
+    let historyMessage = "📜 *Purchase History:*\n\n";
+
+    user.purchaseHistory.forEach((record, index) => {
+      const date = new Date(record.date).toLocaleDateString();
+      if (record.type === 'Booking Code') {
+        historyMessage += `*${index + 1}.* [Booking Code] ${record.oddsRange} | ₦${record.price} | ${date}\n`;
+      } else if (record.type === 'Rollover') {
+        historyMessage += `*${index + 1}.* [Rollover] ${record.oddsType} (${record.duration}) | ₦${record.price} | ${date}\n`;
+      } else if (record.type === 'Booking Code Upload') {
+        historyMessage += `*${index + 1}.* [Upload] ${record.oddsRange} | ₦${record.price} | ${date}\n`;
+      }
+    });
+
+    bot.sendMessage(chatId, historyMessage, { parse_mode: 'Markdown' });
+    return;
+  }
+
+  // Handle /wallet command
+  if (text === '/wallet') {
+    const balance = user.walletBalance || 0;
+    let message = `💰 *Wallet Balance:* ₦${balance}\n`;
+
+    if (user.rolloverSubscriptionEnd && new Date(user.rolloverSubscriptionEnd) > new Date()) {
+      message += `\n📅 *Active Rollover Subscription:*\n`;
+      message += `- Odds Type: ${user.rolloverOddsType}\n`;
+      message += `- Ends On: ${new Date(user.rolloverSubscriptionEnd).toLocaleDateString()}`;
+    } else {
+      message += `\n📅 *No active rollover subscription.*`;
+    }
+
+    bot.sendMessage(chatId, message, { parse_mode: 'Markdown' });
     return;
   }
 });
