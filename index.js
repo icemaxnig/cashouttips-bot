@@ -1,33 +1,49 @@
+// Load environment variables from .env file
 require('dotenv').config();
+
 const axios = require('axios');
 const express = require('express');
 const bodyParser = require('body-parser');
 const cron = require('node-cron');
 const TelegramBot = require('node-telegram-bot-api');
 
+// Initialize Express app
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 8080;  // Use port 8080 for Railway or local
+
+// Use body-parser middleware to parse JSON requests
 app.use(bodyParser.json());
 
-// Database arrays
+// Log the bot token (for debugging purposes, remove this after testing)
+console.log('Bot Token:', process.env.BOT_TOKEN);
+
+// Ensure the BOT_TOKEN is available in the environment variables
+if (!process.env.BOT_TOKEN) {
+  console.error('❌ BOT_TOKEN is missing from the .env file');
+  process.exit(1);  // Exit the application if the token is not set
+}
+
+// Initialize Telegram Bot with polling
+const token = process.env.BOT_TOKEN;
+const bot = new TelegramBot(token, { polling: true });
+
+// Database placeholders for users and roles
 let users = [];
 const userChoices = {};
 const premiumCodes = [];
-const superAdminId = "7303124996"; // YOUR Telegram ID
+const superAdminId = "7303124996";  // Super Admin Telegram ID
 const roles = { "7303124996": "admin" };
-
-// BOT Setup
-const token = process.env.BOT_TOKEN; // Use environment variable
-const bot = new TelegramBot(token, { polling: true });
 
 // Promote Admin Command
 bot.onText(/\/promote (.+)/, (msg, match) => {
   const chatId = msg.chat.id.toString();
   const targetId = match[1].trim();
+
   if (chatId !== superAdminId) {
     bot.sendMessage(chatId, "🚫 Only Super Admin can promote users.");
     return;
   }
+
   roles[targetId] = "admin";
   bot.sendMessage(chatId, `✅ User with ID ${targetId} promoted to Admin.`);
 });
@@ -36,10 +52,12 @@ bot.onText(/\/promote (.+)/, (msg, match) => {
 bot.onText(/\/demote (.+)/, (msg, match) => {
   const chatId = msg.chat.id.toString();
   const targetId = match[1].trim();
+
   if (chatId !== superAdminId) {
     bot.sendMessage(chatId, "🚫 Only Super Admin can demote users.");
     return;
   }
+
   if (roles[targetId]) {
     delete roles[targetId];
     bot.sendMessage(chatId, `✅ User with ID ${targetId} demoted successfully.`);
@@ -85,6 +103,7 @@ bot.onText(/\/uploadcode/, (msg) => {
     bot.sendMessage(chatId, "🚫 You don't have permission to upload codes.");
     return;
   }
+
   userChoices[chatId] = { stage: 'upload_odds' };
   bot.sendMessage(chatId, "🆕 Enter the Odds Range (e.g., 5–10 Odds):");
 });
