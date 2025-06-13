@@ -1,0 +1,35 @@
+module.exports = (bot, api) => {
+  bot.onText(/\/marktip (.+)/, async (msg, match) => {
+    const chatId = msg.chat.id.toString();
+    const ADMIN_ID = process.env.ADMIN_ID;
+
+    if (chatId !== ADMIN_ID) {
+      return bot.sendMessage(chatId, "❌ You are not authorized to mark tips.");
+    }
+
+    const input = match[1].trim();
+    const parts = input.split(" ");
+
+    if (parts.length < 3) {
+      return bot.sendMessage(chatId, "⚠️ Usage:\n/marktip planType day result(WON/LOST)");
+    }
+
+    const planType = parts[0];
+    const day = parseInt(parts[1]);
+    const result = parts[2].toUpperCase();
+
+    if (!["WON", "LOST"].includes(result)) {
+      return bot.sendMessage(chatId, "❌ Result must be WON or LOST");
+    }
+
+    try {
+      const res = await api.post("/admin/marktip", { planType, day, result });
+      bot.sendMessage(chatId, `✅ Tip for *${planType}* - Day ${day} marked as *${result}*`, {
+        parse_mode: "Markdown"
+      });
+    } catch (err) {
+      const msg = err.response?.data?.error || "Failed to mark tip.";
+      bot.sendMessage(chatId, `❌ ${msg}`);
+    }
+  });
+};
